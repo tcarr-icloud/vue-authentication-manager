@@ -1,70 +1,86 @@
 <script setup>
-import {onMounted, reactive, ref, watch} from 'vue'
+import {onMounted, ref, watch} from 'vue'
 
-const users = reactive([]);
-const selected = ref('')
 const username = ref('')
 const password = ref('')
 const enabled = ref('')
 const authorities = ref('')
+const searchValue = ref('')
+const user = ref('')
 
-const fetchUsers = async () => {
-  try {
-    const headers = new Headers();
-    headers.append('Authorization', 'Basic ' + btoa('admin:password'));
-    const response = await fetch('http://localhost:8080/users', {headers: headers});
-    const data = await response.json()
-    data.forEach(user => {
-      users.push({
-        username: user.username,
-        password: user.password,
-        enabled: user.enabled,
-        authorities: [user.authorities]
-      })
-    })
-  } catch (error) {
-    console.error('Error fetching users:', error)
-  }
-  return users;
-}
-
-watch(selected, (user) => {
-  username.value = user.username ? username.value = user.username : username.value = ''
-  password.value = user.password ? password.value = user.password : password.value = ''
-  enabled.value = user.enabled ? enabled.value = user.enabled : enabled.value = ''
-  authorities.value = user.authorities ? authorities.value = user.authorities : authorities.value = ''
-})
-
-
-function create() {
-  if (isNewAndValid()) {
-    users.push({
-      username: username.value.toString().toLowerCase().trim(),
+async function postUser() {
+  await fetch('http://localhost:8080/user', {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Basic ' + btoa('admin:password'),
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    },
+    body: JSON.stringify({
+      username: username.value,
       password: password.value,
       enabled: enabled.value,
       authorities: [authorities.value]
     })
-    selected.value = users[users.length - 1]
+  }).then(function (res) {
+    if (res.status !== 200) {
+      console.error(res);
+    } else {
+      res.json().then(function (data) {
+        clearForm();
+      }.bind(this));
+    }
+  }.bind(this));
+}
+
+function updateUser() {
+  if (hasValidInput() && user.value) {
+    const i = names.indexOf(user.value)
+    names[i] = user.value = `${last.value}, ${first.value}`
   }
 }
 
-function update() {
-  if (hasValidInput() && selected.value) {
-    const i = names.indexOf(selected.value)
-    names[i] = selected.value = `${last.value}, ${first.value}`
+async function deleteUser() {
+  if (user.value !== '') {
+    const response = await fetch("http://localhost:8080/user/" + username.value, {
+      method: 'DELETE',
+      headers: {
+        Authorization: 'Basic ' + btoa('admin:password'),
+      }
+    }).then((res) => {
+      if (res.status !== 200) {
+        console.error(res);
+      } else {
+        clearForm();
+      }
+    })
   }
 }
 
-function del() {
-  if (selected.value) {
-    const i = names.indexOf(selected.value)
-    names.splice(i, 1)
-    selected.value = first.value = last.value = ''
+async function getUser() {
+  if (searchValue.value !== '') {
+    await fetch("http://localhost:8080/user/" + searchValue.value.toString().trim().toLowerCase(), {
+      method: 'GET',
+      headers: {
+        'Authorization': 'Basic ' + btoa('admin:password'),
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+    }).then(function (res) {
+      if (res.status === 200) {
+        res.json().then(function (data) {
+          user.value = data;
+        }.bind(this));
+      } else if (res.status === 404) {
+        alert(`User ${searchValue.value} doesn't exist.`);
+      }
+      searchValue.value = '';
+    }.bind(this));
   }
 }
 
-function clear() {
-  selected.value = '';
+function clearForm() {
+  user.value = '';
   username.value = ''
   password.value = ''
   enabled.value = ''
@@ -72,40 +88,56 @@ function clear() {
 }
 
 function isSelected() {
-  return selected.value !== ''
+  return user.value !== ''
 }
 
 function isNewAndValid() {
-  return selected.value === '' && username.value !== '' && password.value !== '' && enabled.value !== '' && authorities.value !== ''
+  return user.value === '' && username.value !== '' && password.value !== '' && authorities.value !== ''
 }
 
+watch(user, (user) => {
+  username.value = user.username ? username.value = user.username : username.value = ''
+  password.value = user.password ? password.value = user.password : password.value = ''
+  enabled.value = user.enabled ? enabled.value = user.enabled : enabled.value = ''
+  authorities.value = user.authorities ? authorities.value = user.authorities : authorities.value = ''
+})
+
 onMounted(() => {
-  fetchUsers()
 });
 
 </script>
 
 <template>
-  <div class="user">
-    Select a user to edit or enter user info to create a new user.
-    <select size="5" v-model="selected">
-      <option v-for="user in users" :key="user.username" :value="user">{{ user.username }}</option>
-    </select>
-
-    <div class="details">
-      <label>Enabled: <input type="checkbox" v-model="enabled"></label>
-      <label>Username: <input v-model="username"></label>
-      <label>Password: <input v-model="password"></label>
-      <label>Authorities: <input v-model="authorities"></label>
+  <form @submit.prevent="getUser" class="search">
+    Use the search bar to find a user by username. The username is case-insensitive.
+    <div style="display: flex; align-items: center;">
+      <button type="submit">Search</button>
+      <input type="text" id="searchValue" v-model="searchValue"/>
     </div>
+  </form>
 
-    <div class="buttons">
-      <button :disabled="!isNewAndValid()" @click="create">Create</button>
-      <button :disabled="!isSelected()" @click="update">Update</button>
-      <button :disabled="!isSelected()" @click="del">Delete</button>
-      <button :disabled="!isSelected() && !isNewAndValid()" @click="clear">Cancel</button>
+  <form @submit.prevent="postUser" class="details">
+    <div style="display: flex; align-items: center;">
+      <label for="enabled">Enabled:</label>
+      <input type="checkbox" id="enabled" v-model="enabled"/>
     </div>
-  </div>
+    <div style="display: flex; align-items: center;">
+      <label for="username">Username:</label>
+      <input type="text" id="username" v-model="username"/>
+    </div>
+    <div style="display: flex; align-items: center;">
+      <label for="password">Password:</label>
+      <input type="text" id="password" v-model="password"/>
+    </div>
+    <div style="display: flex; align-items: center;">
+      <label for="authorities">Authorities:</label>
+      <input type="text" id="authorities" v-model="authorities">
+    </div>
+    <button :disabled="!isNewAndValid()" type="submit">Create</button>
+    <button :disabled="!isSelected()" type="button" @click="updateUser">Update</button>
+    <button :disabled="!isSelected()" type="button" @click="deleteUser">Delete</button>
+    <button :disabled="!isSelected() && !isNewAndValid()" type="button" @click="clearForm">Cancel</button>
+  </form>
 </template>
 
 <style scoped>
@@ -113,10 +145,6 @@ onMounted(() => {
   font-size: inherit;
 }
 
-.user {
-  display: grid;
-  grid-template-columns: 100%;
-}
 
 .details {
   clear: both;
@@ -126,26 +154,18 @@ onMounted(() => {
 
 .details label {
   display: flex;
-  margin: .5em;
-  padding: .5em;
 }
 
-.details label input {
-  width: 100%;
+form.details {
+  margin-top: 1rem;
 }
 
-select {
-  float: left;
-  margin: 0 1em 1em 0;
-  width: 14em;
+form.search {
+  margin-bottom: 1rem;
 }
 
-.buttons {
-  clear: both;
-}
-
-button + button {
-  margin-left: 5px;
+input#authorities, input#password, input#searchValue, input#username {
+  width: -webkit-fill-available;
 }
 
 </style>
